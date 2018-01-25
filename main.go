@@ -53,21 +53,36 @@ func main() {
 				continue
 			}
 
-			fn := decl.InitDeclaratorListOpt.InitDeclaratorList.InitDeclarator.Declarator.DirectDeclarator
+			fnDecl := decl.InitDeclaratorListOpt.InitDeclaratorList.InitDeclarator.Declarator
+			fn := fnDecl.DirectDeclarator
 			if fn.ParameterTypeList != nil {
-				fmt.Println("func ", identifierOf(fn), "(")
+				fmt.Print("func ", identifierOf(fn), "(")
+
 				pList := fn.ParameterTypeList.ParameterList
-				for pList != nil {
-					p := pList.ParameterDeclaration
-					//fmt.Println(p)
-					if p.Declarator != nil {
-						fmt.Println("\t", identifierOf(p.Declarator.DirectDeclarator), p.Declarator.Type, ",")
-					} else {
-						//fmt.Println("\t", p.DeclarationSpecifiers, ",")
+				if pList.ParameterList == nil && pList.ParameterDeclaration.Declarator == nil {
+					// empty void parameter list
+					// TODO: check for 'void' type?
+					fmt.Print(")")
+				} else {
+					for pList != nil {
+						p := pList.ParameterDeclaration
+						//fmt.Println(p)
+						if p.Declarator != nil {
+							fmt.Print("\n\t", identifierOf(p.Declarator.DirectDeclarator), " ", p.Declarator.Type.Kind(), ",")
+						} else {
+							//fmt.Println("\t", p.DeclarationSpecifiers, ",")
+						}
+						pList = pList.ParameterList
 					}
-					pList = pList.ParameterList
+					fmt.Print("\n)")
 				}
-				fmt.Println(")")
+
+				resultType := fnDecl.Type.Result()
+				if resultType.Kind() == cc.Void {
+					fmt.Println()
+				} else {
+					fmt.Println(" ", resultType.Kind())
+				}
 			} else {
 				fmt.Println(identifierOf(fn))
 			}
