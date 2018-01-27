@@ -54,8 +54,11 @@ func main() {
 
 	fmt.Println(`package vg
 
+//#cgo LDFLAGS: -lAmanithVG
 //#include "VG/openvg.h"
-import "C"`)
+import "C"
+
+import "unsafe"`)
 
 	for _, e := range enums {
 		fmt.Println()

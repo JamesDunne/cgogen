@@ -28,7 +28,21 @@ func (t Type) IsConst() bool {
 	return t.Specifier().IsConst()
 }
 
+func (t Type) IsTypeDef() bool {
+	rawSpec := t.Declarator().RawSpecifier()
+	if name := rawSpec.TypedefName(); name > 0 {
+		return true
+	} else if rawSpec.IsTypedef() {
+		return true
+	}
+	return false
+}
+
 func (t Type) RequiresCast() bool {
+	if t.IsTypeDef() {
+		return true
+	}
+
 	switch t.Kind() {
 	case cc.Undefined:
 		return false
@@ -96,7 +110,7 @@ func (t Type) GoType() string {
 	case cc.Undefined:
 		return "undefined"
 	case cc.Void:
-		return "void"
+		return "byte"
 	case cc.Ptr:
 		return "*" + Type{t.Element()}.GoType()
 	case cc.UintPtr: // Type used for pointer arithmetic.
@@ -142,7 +156,7 @@ func (t Type) GoType() string {
 	case cc.Union:
 		return "union"
 	case cc.Enum:
-		return goName(typedefNameOf(t))
+		return goName(typedefNameOf(t)) + "Enum"
 	case cc.TypedefName:
 		return goName(typedefNameOf(t))
 	case cc.Function:
@@ -155,66 +169,82 @@ func (t Type) GoType() string {
 }
 
 func (t Type) CGoType() string {
-	switch t.Kind() {
-	case cc.Undefined:
-		return "undefined"
-	case cc.Void:
-		return "void"
-	case cc.Ptr:
-		return "*" + Type{t.Element()}.CGoType()
-	case cc.UintPtr: // Type used for pointer arithmetic.
-		return "uintptr"
-	case cc.Char:
-		return "int8"
-	case cc.SChar:
-		return "int8"
-	case cc.UChar:
-		return "uint8"
-	case cc.Short:
-		return "int16"
-	case cc.UShort:
-		return "uint16"
-	case cc.Int:
-		return "int32"
-	case cc.UInt:
-		return "uint32"
-	case cc.Long:
-		return "int32"
-	case cc.ULong:
-		return "uint32"
-	case cc.LongLong:
-		return "int64"
-	case cc.ULongLong:
-		return "uint64"
-	case cc.Float:
-		return "float32"
-	case cc.Double:
-		return "float64"
-	case cc.LongDouble:
-		return "float64"
-	case cc.Bool:
-		return "bool"
-	case cc.FloatComplex:
-		return "complex64"
-	case cc.DoubleComplex:
-		return "complex128"
-	case cc.LongDoubleComplex:
-		return "complex128"
-	case cc.Struct:
-		return "struct"
-	case cc.Union:
-		return "union"
-	case cc.Enum:
-		return fmt.Sprintf("C.%s", typedefNameOf(t))
-	case cc.TypedefName:
-		return fmt.Sprintf("C.%s", typedefNameOf(t))
-	case cc.Function:
-		return "func"
-	case cc.Array:
-		return fmt.Sprintf("[%d]%s", t.Elements(), Type{t.Element()}.CGoType())
-	default:
-		return "???"
+	prefix := ""
+	base := ""
+
+	if t.Kind() == cc.Array {
+		prefix = fmt.Sprintf("[%d]", t.Elements())
+		t = Type{t.Element()}
+	} else if t.Kind() == cc.Ptr {
+		prefix = "*"
+		t = Type{t.Element()}
 	}
+
+	rawSpec := t.Declarator().RawSpecifier()
+	if name := rawSpec.TypedefName(); name > 0 {
+		base = "C." + blessName(xc.Dict.S(name))
+	} else if rawSpec.IsTypedef() {
+		base = "C." + identifierOf(t.Declarator().DirectDeclarator)
+	} else {
+		switch t.Kind() {
+		case cc.Undefined:
+			base = "undefined"
+		case cc.Void:
+			base = "byte"
+		case cc.UintPtr: // Type used for pointer arithmetic.
+			base = "uintptr"
+		case cc.Char:
+			base = "int8"
+		case cc.SChar:
+			base = "int8"
+		case cc.UChar:
+			base = "uint8"
+		case cc.Short:
+			base = "int16"
+		case cc.UShort:
+			base = "uint16"
+		case cc.Int:
+			base = "int32"
+		case cc.UInt:
+			base = "uint32"
+		case cc.Long:
+			base = "int32"
+		case cc.ULong:
+			base = "uint32"
+		case cc.LongLong:
+			base = "int64"
+		case cc.ULongLong:
+			base = "uint64"
+		case cc.Float:
+			base = "float32"
+		case cc.Double:
+			base = "float64"
+		case cc.LongDouble:
+			base = "float64"
+		case cc.Bool:
+			base = "bool"
+		case cc.FloatComplex:
+			base = "complex64"
+		case cc.DoubleComplex:
+			base = "complex128"
+		case cc.LongDoubleComplex:
+			base = "complex128"
+		case cc.Struct:
+			base = "struct"
+		case cc.Union:
+			base = "union"
+		case cc.Enum:
+			base = fmt.Sprintf("C.%s", typedefNameOf(t))
+		case cc.TypedefName:
+			base = fmt.Sprintf("C.%s", typedefNameOf(t))
+		case cc.Function:
+			base = "func"
+		default:
+			base = "???"
+		}
+	}
+
+	return prefix + base
 }
 
 type Parameter struct {
@@ -284,17 +314,27 @@ func emitFunction(f Function) {
 	fmt.Printf(" {\n")
 	fmt.Printf("\t")
 	if f.ResultType.Kind() != cc.Void {
-		fmt.Printf("return ")
+		fmt.Printf("ret := ")
 	}
 	fmt.Printf("C.%s(\n", f.CName())
 	for _, p := range f.Parameters {
+		expr := p.GoName()
 		if p.Type.RequiresCast() {
-			fmt.Printf("\t\t(%s)(%s),\n", p.Type.CGoType(), p.GoName())
-		} else {
-			fmt.Printf("\t\t%s,\n", p.GoName())
+			expr = fmt.Sprintf("(%s)(%s)", p.Type.CGoType(), expr)
 		}
+		if p.Type.Kind() == cc.Ptr && !p.Type.IsTypeDef() {
+			expr = fmt.Sprintf("unsafe.Pointer(%s)", expr)
+		}
+		fmt.Printf("\t\t%s,\n", expr)
 	}
 	fmt.Printf("\t)\n")
+	if f.ResultType.Kind() != cc.Void {
+		if f.ResultType.RequiresCast() {
+			fmt.Printf("\treturn (%s)(ret)\n", f.ResultType.GoType())
+		} else {
+			fmt.Printf("\treturn ret\n")
+		}
+	}
 	fmt.Printf("}\n")
 }
 
@@ -328,7 +368,7 @@ type Enum struct {
 func (e Enum) CName() string { return e.identifier }
 
 func (e Enum) GoName() string {
-	return goName(e.identifier)
+	return goName(e.identifier) + "Enum"
 }
 
 func (e Enum) CGoName() string {
