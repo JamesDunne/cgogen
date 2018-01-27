@@ -320,7 +320,11 @@ func emitFunction(f Function) {
 	for _, p := range f.Parameters {
 		expr := p.GoName()
 		if p.Type.RequiresCast() {
-			expr = fmt.Sprintf("(%s)(%s)", p.Type.CGoType(), expr)
+			if p.Type.Kind() == cc.Array {
+				expr = fmt.Sprintf("(*%s)(&%s[0])", Type{p.Type.Element()}.CGoType(), expr)
+			} else {
+				expr = fmt.Sprintf("(%s)(%s)", p.Type.CGoType(), expr)
+			}
 		}
 		if p.Type.Kind() == cc.Ptr && !p.Type.IsTypeDef() {
 			expr = fmt.Sprintf("unsafe.Pointer(%s)", expr)
