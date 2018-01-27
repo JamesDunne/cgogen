@@ -240,13 +240,136 @@ func (f Function) GoName() string {
 	return strings.Title(goName)
 }
 
+func parseFunction(fnDecl *cc.Declarator) Function {
+	fn := fnDecl.DirectDeclarator
+
+	f := Function{
+		identifier: identifierOf(fn),
+		ResultType: Type{fnDecl.Type.Result()},
+	}
+
+	pList := fn.ParameterTypeList.ParameterList
+	if pList.ParameterList == nil && pList.ParameterDeclaration.Declarator == nil {
+		// empty void parameter list
+		// TODO: check for 'void' type?
+	} else {
+		for pList != nil {
+			p := pList.ParameterDeclaration
+			if p.Declarator != nil {
+				f.Parameters = append(f.Parameters, Parameter{
+					identifier: identifierOf(p.Declarator.DirectDeclarator),
+					Type:       Type{p.Declarator.Type},
+				})
+			}
+			pList = pList.ParameterList
+		}
+	}
+
+	return f
+}
+
+func emitFunction(f Function) {
+	// Function declaration:
+	fmt.Printf("func %s(\n", f.GoName())
+	for _, p := range f.Parameters {
+		fmt.Printf("\t%s %s,\n", p.GoName(), p.Type.GoType())
+	}
+	if f.ResultType.Kind() == cc.Void {
+		fmt.Printf(")")
+	} else {
+		fmt.Printf(") %s", f.ResultType.GoType())
+	}
+
+	// Function body:
+	fmt.Printf(" {\n")
+	fmt.Printf("\t")
+	if f.ResultType.Kind() != cc.Void {
+		fmt.Printf("return ")
+	}
+	fmt.Printf("C.%s(\n", f.CName())
+	for _, p := range f.Parameters {
+		if p.Type.RequiresCast() {
+			fmt.Printf("\t\t(%s)(%s),\n", p.Type.CGoType(), p.GoName())
+		} else {
+			fmt.Printf("\t\t%s,\n", p.GoName())
+		}
+	}
+	fmt.Printf("\t)\n")
+	fmt.Printf("}\n")
+}
+
+type EnumMember struct {
+	identifier string
+	Value      interface{}
+}
+
+func (m EnumMember) CName() string {
+	return m.identifier
+}
+
+func (m EnumMember) GoName() string {
+	name := m.identifier
+	if strings.HasPrefix(name, "VG_") {
+		name = name[3:]
+	}
+	parts := strings.Split(name, "_")
+	goName := ""
+	for _, p := range parts {
+		goName += strings.Title(strings.ToLower(p))
+	}
+	return goName
+}
+
+type Enum struct {
+	identifier string
+	Members    []EnumMember
+}
+
+func (e Enum) CName() string { return e.identifier }
+
+func (e Enum) GoName() string {
+	return goName(e.identifier)
+}
+
+func (e Enum) CGoName() string {
+	return fmt.Sprintf("C.%s", e.identifier)
+}
+
+func parseEnum(enDecl *cc.Declarator) Enum {
+	//fmt.Println(enDecl)
+	constants := enDecl.Type.EnumeratorList()
+	e := Enum{
+		identifier: identifierOf(enDecl.DirectDeclarator),
+		//Type:       enDecl.Type, // TODO: integer base type
+		Members: make([]EnumMember, 0, len(constants)),
+	}
+	for _, m := range constants {
+
+		e.Members = append(e.Members, EnumMember{
+			identifier: blessName(m.DefTok.S()),
+			Value:      m.Value,
+		})
+		//m.Declarator.DirectDeclarator
+	}
+	return e
+}
+
+func emitEnum(e Enum) {
+	fmt.Printf("type %s int32\n", e.GoName())
+	fmt.Printf("const (\n")
+	for _, m := range e.Members {
+		fmt.Printf("\t%s %s = %v\n", m.GoName(), e.GoName(), m.Value)
+	}
+	fmt.Printf(")\n")
+}
+
 func identifierOf(dd *cc.DirectDeclarator) string {
 	switch dd.Case {
 	case 0: // IDENTIFIER
 		if dd.Token.Val == 0 {
 			return ""
 		}
-		return string(dd.Token.S())
+		return blessName(dd.Token.S())
 	case 1: // '(' Declarator ')'
 		return identifierOf(dd.Declarator.DirectDeclarator)
 	default:
@@ -263,7 +386,7 @@ func identifierOf(dd *cc.DirectDeclarator) string {
 func typedefNameOf(typ cc.Type) string {
 	rawSpec := typ.Declarator().RawSpecifier()
 	if name := rawSpec.TypedefName(); name > 0 {
-		return string(xc.Dict.S(name))
+		return blessName(xc.Dict.S(name))
 	} else if rawSpec.IsTypedef() {
 		return identifierOf(typ.Declarator().DirectDeclarator)
 	}
