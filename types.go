@@ -125,6 +125,10 @@ func (t Type) GoType(namer Namer) string {
 		}
 	}
 
+	if t.Kind() == cc.Ptr && t.Element().Kind() == cc.Void {
+		return "unsafe.Pointer"
+	}
+
 	switch t.Kind() {
 	case cc.Undefined:
 		return "undefined"

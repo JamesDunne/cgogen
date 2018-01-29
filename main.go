@@ -105,12 +105,12 @@ type VGNamer struct {
 }
 
 func (n *VGNamer) RegisterTypedefEnum(identifier string) {
-	fmt.Printf("enum: %s\n", identifier)
+	//fmt.Printf("enum: %s\n", identifier)
 	n.typedefs[identifier] = n.EnumName(Enum{identifier: identifier})
 }
 func (n *VGNamer) TypedefGoName(identifier string) string {
-	name, ok := n.typedefs[identifier]
-	fmt.Printf("is enum? %s = %v: %s\n", identifier, ok, name)
+	name, _ := n.typedefs[identifier]
+	//fmt.Printf("is enum? %s = %v: %s\n", identifier, ok, name)
 	return name
 }
 
@@ -158,8 +158,8 @@ func (n *VGUNamer) RegisterTypedefEnum(identifier string) {
 	n.typedefs[identifier] = n.EnumName(Enum{identifier: identifier})
 }
 func (n *VGUNamer) TypedefGoName(identifier string) string {
-	name, ok := n.typedefs[identifier]
-	fmt.Printf("is enum? %s = %v: %s\n", identifier, ok, name)
+	name, _ := n.typedefs[identifier]
+	//fmt.Printf("is enum? %s = %v: %s\n", identifier, ok, name)
 	return name
 }
 
