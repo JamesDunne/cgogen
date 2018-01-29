@@ -8,7 +8,7 @@ import (
 	"github.com/cznic/cc"
 )
 
-func generateCgo(srcPaths []string, packageName string, outPath string) error {
+func generateCgo(srcPaths []string, packageName string, outPath string, namer Namer) error {
 	// Use 64-bit C types model:
 	model := &cc.Model{
 		Items: make(map[cc.Kind]cc.ModelItem),
@@ -77,12 +77,12 @@ import "unsafe"`)
 
 	for _, e := range enums {
 		fmt.Fprintln(o)
-		emitEnum(e, o, &VGNamer{})
+		emitEnum(e, o, namer)
 	}
 
 	for _, f := range functions {
 		fmt.Fprintln(o)
-		emitFunction(f, o, &VGNamer{})
+		emitFunction(f, o, namer)
 	}
 
 	return nil
@@ -118,7 +118,7 @@ func (n *VGNamer) ParameterName(p Parameter) string {
 
 func main() {
 	var err error
-	err = generateCgo([]string{"VG/openvg.h"}, "vg", "../golang-openvg/vg/vg.go")
+	err = generateCgo([]string{"VG/openvg.h"}, "vg", "../golang-openvg/vg/vg.go", &VGNamer{})
 	if err != nil {
 		panic(err)
 	}
