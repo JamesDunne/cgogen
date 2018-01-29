@@ -61,6 +61,7 @@ func generateCgo(srcPaths []string, packageName string, outPath string, namer Na
 				en := parseEnum(d)
 				if !namer.IgnoreEnum(en.identifier) {
 					enums = append(enums, en)
+					namer.RegisterTypedefEnum(en.identifier)
 				}
 			}
 		}
@@ -99,7 +100,19 @@ func goName(name string) string {
 	return Export(name)
 }
 
-type VGNamer struct{}
+type VGNamer struct {
+	typedefs map[string]string
+}
+
+func (n *VGNamer) RegisterTypedefEnum(identifier string) {
+	fmt.Printf("enum: %s\n", identifier)
+	n.typedefs[identifier] = n.EnumName(Enum{identifier: identifier})
+}
+func (n *VGNamer) TypedefGoName(identifier string) string {
+	name, ok := n.typedefs[identifier]
+	fmt.Printf("is enum? %s = %v: %s\n", identifier, ok, name)
+	return name
+}
 
 func (n *VGNamer) IgnoreEnum(name string) bool {
 	return false
@@ -137,7 +150,18 @@ func (n *VGNamer) ParameterName(p Parameter) string {
 	return p.identifier
 }
 
-type VGUNamer struct{}
+type VGUNamer struct {
+	typedefs map[string]string
+}
+
+func (n *VGUNamer) RegisterTypedefEnum(identifier string) {
+	n.typedefs[identifier] = n.EnumName(Enum{identifier: identifier})
+}
+func (n *VGUNamer) TypedefGoName(identifier string) string {
+	name, ok := n.typedefs[identifier]
+	fmt.Printf("is enum? %s = %v: %s\n", identifier, ok, name)
+	return name
+}
 
 func (n *VGUNamer) IgnoreEnum(name string) bool {
 	return !strings.HasPrefix(name, "VGU")
@@ -177,11 +201,11 @@ func (n *VGUNamer) ParameterName(p Parameter) string {
 
 func main() {
 	var err error
-	err = generateCgo([]string{"VG/openvg.h"}, "vg", "../golang-openvg/vg/vg.go", &VGNamer{})
+	err = generateCgo([]string{"VG/openvg.h"}, "vg", "../golang-openvg/vg/vg.go", &VGNamer{typedefs: make(map[string]string)})
 	if err != nil {
 		panic(err)
 	}
-	err = generateCgo([]string{"VG/vgu.h"}, "vgu", "../golang-openvg/vgu/vgu.go", &VGUNamer{})
+	err = generateCgo([]string{"VG/vgu.h"}, "vgu", "../golang-openvg/vgu/vgu.go", &VGUNamer{typedefs: make(map[string]string)})
 	if err != nil {
 		panic(err)
 	}

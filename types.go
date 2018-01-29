@@ -11,6 +11,9 @@ import (
 )
 
 type Namer interface {
+	RegisterTypedefEnum(identifier string)
+	TypedefGoName(identifier string) string
+
 	IgnoreEnum(name string) bool
 	IgnoreFunction(name string) bool
 	EnumName(e Enum) string
@@ -109,6 +112,19 @@ func (t Type) RequiresCast() bool {
 }
 
 func (t Type) GoType(namer Namer) string {
+	rawSpec := t.Declarator().RawSpecifier()
+	if name := rawSpec.TypedefName(); name > 0 {
+		typedefName := blessName(xc.Dict.S(name))
+		if goName := namer.TypedefGoName(typedefName); goName != "" {
+			return goName
+		}
+	} else if rawSpec.IsTypedef() {
+		typedefName := identifierOf(t.Declarator().DirectDeclarator)
+		if goName := namer.TypedefGoName(typedefName); goName != "" {
+			return goName
+		}
+	}
+
 	switch t.Kind() {
 	case cc.Undefined:
 		return "undefined"
@@ -363,16 +379,13 @@ func parseEnum(enDecl *cc.Declarator) Enum {
 	constants := enDecl.Type.EnumeratorList()
 	e := Enum{
 		identifier: identifierOf(enDecl.DirectDeclarator),
-		//Type:       enDecl.Type, // TODO: integer base type
-		Members: make([]EnumMember, 0, len(constants)),
+		Members:    make([]EnumMember, 0, len(constants)),
 	}
 	for _, m := range constants {
-
 		e.Members = append(e.Members, EnumMember{
 			identifier: blessName(m.DefTok.S()),
 			Value:      m.Value,
 		})
-		//m.Declarator.DirectDeclarator
 	}
 	return e
 }
