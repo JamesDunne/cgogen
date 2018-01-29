@@ -53,11 +53,15 @@ func generateCgo(srcPaths []string, packageName string, outPath string, namer Na
 		dd := d.DirectDeclarator
 		if dd.ParameterTypeList != nil {
 			f := parseFunction(d)
-			functions = append(functions, f)
+			if !namer.IgnoreFunction(f.identifier) {
+				functions = append(functions, f)
+			}
 		} else {
 			if d.Type.Kind() == cc.Enum {
 				en := parseEnum(d)
-				enums = append(enums, en)
+				if !namer.IgnoreEnum(en.identifier) {
+					enums = append(enums, en)
+				}
 			}
 		}
 
@@ -88,10 +92,27 @@ import "unsafe"`)
 	return nil
 }
 
+func goName(name string) string {
+	if strings.HasPrefix(name, "VG") {
+		return Export(name[2:])
+	}
+	return Export(name)
+}
+
 type VGNamer struct{}
 
+func (n *VGNamer) IgnoreEnum(name string) bool {
+	return false
+}
+func (n *VGNamer) IgnoreFunction(name string) bool {
+	return false
+}
 func (n *VGNamer) EnumName(e Enum) string {
-	return goName(e.identifier) + "Enum"
+	name := e.identifier
+	if strings.HasPrefix(name, "VG") {
+		name = name[2:]
+	}
+	return Export(name) + "Enum"
 }
 func (n *VGNamer) EnumMemberName(m EnumMember) string {
 	name := m.identifier
@@ -116,14 +137,52 @@ func (n *VGNamer) ParameterName(p Parameter) string {
 	return p.identifier
 }
 
+type VGUNamer struct{}
+
+func (n *VGUNamer) IgnoreEnum(name string) bool {
+	return !strings.HasPrefix(name, "VGU")
+}
+func (n *VGUNamer) IgnoreFunction(name string) bool {
+	return !strings.HasPrefix(name, "vgu")
+}
+func (n *VGUNamer) EnumName(e Enum) string {
+	name := e.identifier
+	if strings.HasPrefix(name, "VGU") {
+		name = name[3:]
+	}
+	return Export(name) + "Enum"
+}
+func (n *VGUNamer) EnumMemberName(m EnumMember) string {
+	name := m.identifier
+	if strings.HasPrefix(name, "VGU_") {
+		name = name[4:]
+	}
+	parts := strings.Split(name, "_")
+	goName := ""
+	for _, p := range parts {
+		goName += strings.Title(strings.ToLower(p))
+	}
+	return goName
+}
+func (n *VGUNamer) FunctionName(f Function) string {
+	goName := f.identifier
+	if strings.HasPrefix(goName, "vgu") {
+		goName = goName[3:]
+	}
+	return strings.Title(goName)
+}
+func (n *VGUNamer) ParameterName(p Parameter) string {
+	return p.identifier
+}
+
 func main() {
 	var err error
 	err = generateCgo([]string{"VG/openvg.h"}, "vg", "../golang-openvg/vg/vg.go", &VGNamer{})
 	if err != nil {
 		panic(err)
 	}
-	//	err = generateCgo([]string{"VG/vgu.h"}, "vgu", "../golang-openvg/vgu/vgu.go")
-	//	if err != nil {
-	//		panic(err)
-	//	}
+	err = generateCgo([]string{"VG/vgu.h"}, "vgu", "../golang-openvg/vgu/vgu.go", &VGUNamer{})
+	if err != nil {
+		panic(err)
+	}
 }

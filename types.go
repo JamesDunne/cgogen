@@ -11,6 +11,8 @@ import (
 )
 
 type Namer interface {
+	IgnoreEnum(name string) bool
+	IgnoreFunction(name string) bool
 	EnumName(e Enum) string
 	EnumMemberName(m EnumMember) string
 	FunctionName(f Function) string
@@ -23,13 +25,6 @@ type Type struct {
 
 func Export(name string) string {
 	return strings.Title(name)
-}
-
-func goName(name string) string {
-	if strings.HasPrefix(name, "VG") {
-		return Export(name[2:])
-	}
-	return Export(name)
 }
 
 func (t Type) IsConst() bool {
@@ -167,7 +162,7 @@ func (t Type) GoType(namer Namer) string {
 		return namer.EnumName(Enum{identifier: typedefNameOf(t)})
 	case cc.TypedefName:
 		// TODO
-		return goName(typedefNameOf(t))
+		return namer.EnumName(Enum{identifier: typedefNameOf(t)})
 	case cc.Function:
 		return "func"
 	case cc.Array:
