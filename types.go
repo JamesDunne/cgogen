@@ -10,6 +10,13 @@ import (
 	"github.com/cznic/xc"
 )
 
+type Namer interface {
+	EnumName(e Enum) string
+	EnumMemberName(m EnumMember) string
+	FunctionName(f Function) string
+	ParameterName(p Parameter) string
+}
+
 type Type struct {
 	cc.Type
 }
@@ -106,14 +113,14 @@ func (t Type) RequiresCast() bool {
 	}
 }
 
-func (t Type) GoType() string {
+func (t Type) GoType(namer Namer) string {
 	switch t.Kind() {
 	case cc.Undefined:
 		return "undefined"
 	case cc.Void:
 		return "byte"
 	case cc.Ptr:
-		return "*" + Type{t.Element()}.GoType()
+		return "*" + Type{t.Element()}.GoType(namer)
 	case cc.UintPtr: // Type used for pointer arithmetic.
 		return "uintptr"
 	case cc.Char:
@@ -157,13 +164,14 @@ func (t Type) GoType() string {
 	case cc.Union:
 		return "union"
 	case cc.Enum:
-		return goName(typedefNameOf(t)) + "Enum"
+		return namer.EnumName(Enum{identifier: typedefNameOf(t)})
 	case cc.TypedefName:
+		// TODO
 		return goName(typedefNameOf(t))
 	case cc.Function:
 		return "func"
 	case cc.Array:
-		return fmt.Sprintf("[%d]%s", t.Elements(), Type{t.Element()}.GoType())
+		return fmt.Sprintf("[%d]%s", t.Elements(), Type{t.Element()}.GoType(namer))
 	default:
 		return "???"
 	}
@@ -253,8 +261,7 @@ type Parameter struct {
 	Type       Type
 }
 
-func (p Parameter) CName() string  { return p.identifier }
-func (p Parameter) GoName() string { return p.identifier }
+func (p Parameter) CName() string { return p.identifier }
 
 type Function struct {
 	identifier string
@@ -263,13 +270,6 @@ type Function struct {
 }
 
 func (f Function) CName() string { return f.identifier }
-func (f Function) GoName() string {
-	goName := f.identifier
-	if strings.HasPrefix(goName, "vg") {
-		goName = goName[2:]
-	}
-	return strings.Title(goName)
-}
 
 func parseFunction(fnDecl *cc.Declarator) Function {
 	fn := fnDecl.DirectDeclarator
@@ -299,16 +299,16 @@ func parseFunction(fnDecl *cc.Declarator) Function {
 	return f
 }
 
-func emitFunction(f Function, o io.Writer) {
+func emitFunction(f Function, o io.Writer, namer Namer) {
 	// Function declaration:
-	fmt.Fprintf(o, "func %s(\n", f.GoName())
+	fmt.Fprintf(o, "func %s(\n", namer.FunctionName(f))
 	for _, p := range f.Parameters {
-		fmt.Fprintf(o, "\t%s %s,\n", p.GoName(), p.Type.GoType())
+		fmt.Fprintf(o, "\t%s %s,\n", namer.ParameterName(p), p.Type.GoType(namer))
 	}
 	if f.ResultType.Kind() == cc.Void {
 		fmt.Fprintf(o, ")")
 	} else {
-		fmt.Fprintf(o, ") %s", f.ResultType.GoType())
+		fmt.Fprintf(o, ") %s", f.ResultType.GoType(namer))
 	}
 
 	// Function body:
@@ -319,7 +319,7 @@ func emitFunction(f Function, o io.Writer) {
 	}
 	fmt.Fprintf(o, "C.%s(\n", f.CName())
 	for _, p := range f.Parameters {
-		expr := p.GoName()
+		expr := namer.ParameterName(p)
 		if p.Type.RequiresCast() {
 			if p.Type.Kind() == cc.Array {
 				expr = fmt.Sprintf("(*%s)(&%s[0])", Type{p.Type.Element()}.CGoType(), expr)
@@ -335,7 +335,7 @@ func emitFunction(f Function, o io.Writer) {
 	fmt.Fprintf(o, "\t)\n")
 	if f.ResultType.Kind() != cc.Void {
 		if f.ResultType.RequiresCast() {
-			fmt.Fprintf(o, "\treturn (%s)(ret)\n", f.ResultType.GoType())
+			fmt.Fprintf(o, "\treturn (%s)(ret)\n", f.ResultType.GoType(namer))
 		} else {
 			fmt.Fprintf(o, "\treturn ret\n")
 		}
@@ -352,29 +352,12 @@ func (m EnumMember) CName() string {
 	return m.identifier
 }
 
-func (m EnumMember) GoName() string {
-	name := m.identifier
-	if strings.HasPrefix(name, "VG_") {
-		name = name[3:]
-	}
-	parts := strings.Split(name, "_")
-	goName := ""
-	for _, p := range parts {
-		goName += strings.Title(strings.ToLower(p))
-	}
-	return goName
-}
-
 type Enum struct {
 	identifier string
 	Members    []EnumMember
 }
 
 func (e Enum) CName() string { return e.identifier }
-
-func (e Enum) GoName() string {
-	return goName(e.identifier) + "Enum"
-}
 
 func (e Enum) CGoName() string {
 	return fmt.Sprintf("C.%s", e.identifier)
@@ -399,11 +382,11 @@ func parseEnum(enDecl *cc.Declarator) Enum {
 	return e
 }
 
-func emitEnum(e Enum, o io.Writer) {
-	fmt.Fprintf(o, "type %s int32\n", e.GoName())
+func emitEnum(e Enum, o io.Writer, namer Namer) {
+	fmt.Fprintf(o, "type %s int32\n", namer.EnumName(e))
 	fmt.Fprintf(o, "const (\n")
 	for _, m := range e.Members {
-		fmt.Fprintf(o, "\t%s %s = %v\n", m.GoName(), e.GoName(), m.Value)
+		fmt.Fprintf(o, "\t%s %s = %v\n", namer.EnumMemberName(m), namer.EnumName(e), m.Value)
 	}
 	fmt.Fprintf(o, ")\n")
 }

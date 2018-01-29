@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/cznic/cc"
 )
@@ -76,15 +77,43 @@ import "unsafe"`)
 
 	for _, e := range enums {
 		fmt.Fprintln(o)
-		emitEnum(e, o)
+		emitEnum(e, o, &VGNamer{})
 	}
 
 	for _, f := range functions {
 		fmt.Fprintln(o)
-		emitFunction(f, o)
+		emitFunction(f, o, &VGNamer{})
 	}
 
 	return nil
+}
+
+type VGNamer struct{}
+
+func (n *VGNamer) EnumName(e Enum) string {
+	return goName(e.identifier) + "Enum"
+}
+func (n *VGNamer) EnumMemberName(m EnumMember) string {
+	name := m.identifier
+	if strings.HasPrefix(name, "VG_") {
+		name = name[3:]
+	}
+	parts := strings.Split(name, "_")
+	goName := ""
+	for _, p := range parts {
+		goName += strings.Title(strings.ToLower(p))
+	}
+	return goName
+}
+func (n *VGNamer) FunctionName(f Function) string {
+	goName := f.identifier
+	if strings.HasPrefix(goName, "vg") {
+		goName = goName[2:]
+	}
+	return strings.Title(goName)
+}
+func (n *VGNamer) ParameterName(p Parameter) string {
+	return p.identifier
 }
 
 func main() {
