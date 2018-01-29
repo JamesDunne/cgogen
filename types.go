@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/cznic/cc"
@@ -298,25 +299,25 @@ func parseFunction(fnDecl *cc.Declarator) Function {
 	return f
 }
 
-func emitFunction(f Function) {
+func emitFunction(f Function, o io.Writer) {
 	// Function declaration:
-	fmt.Printf("func %s(\n", f.GoName())
+	fmt.Fprintf(o, "func %s(\n", f.GoName())
 	for _, p := range f.Parameters {
-		fmt.Printf("\t%s %s,\n", p.GoName(), p.Type.GoType())
+		fmt.Fprintf(o, "\t%s %s,\n", p.GoName(), p.Type.GoType())
 	}
 	if f.ResultType.Kind() == cc.Void {
-		fmt.Printf(")")
+		fmt.Fprintf(o, ")")
 	} else {
-		fmt.Printf(") %s", f.ResultType.GoType())
+		fmt.Fprintf(o, ") %s", f.ResultType.GoType())
 	}
 
 	// Function body:
-	fmt.Printf(" {\n")
-	fmt.Printf("\t")
+	fmt.Fprintf(o, " {\n")
+	fmt.Fprintf(o, "\t")
 	if f.ResultType.Kind() != cc.Void {
-		fmt.Printf("ret := ")
+		fmt.Fprintf(o, "ret := ")
 	}
-	fmt.Printf("C.%s(\n", f.CName())
+	fmt.Fprintf(o, "C.%s(\n", f.CName())
 	for _, p := range f.Parameters {
 		expr := p.GoName()
 		if p.Type.RequiresCast() {
@@ -329,17 +330,17 @@ func emitFunction(f Function) {
 		if p.Type.Kind() == cc.Ptr && !p.Type.IsTypeDef() {
 			expr = fmt.Sprintf("unsafe.Pointer(%s)", expr)
 		}
-		fmt.Printf("\t\t%s,\n", expr)
+		fmt.Fprintf(o, "\t\t%s,\n", expr)
 	}
-	fmt.Printf("\t)\n")
+	fmt.Fprintf(o, "\t)\n")
 	if f.ResultType.Kind() != cc.Void {
 		if f.ResultType.RequiresCast() {
-			fmt.Printf("\treturn (%s)(ret)\n", f.ResultType.GoType())
+			fmt.Fprintf(o, "\treturn (%s)(ret)\n", f.ResultType.GoType())
 		} else {
-			fmt.Printf("\treturn ret\n")
+			fmt.Fprintf(o, "\treturn ret\n")
 		}
 	}
-	fmt.Printf("}\n")
+	fmt.Fprintf(o, "}\n")
 }
 
 type EnumMember struct {
@@ -398,13 +399,13 @@ func parseEnum(enDecl *cc.Declarator) Enum {
 	return e
 }
 
-func emitEnum(e Enum) {
-	fmt.Printf("type %s int32\n", e.GoName())
-	fmt.Printf("const (\n")
+func emitEnum(e Enum, o io.Writer) {
+	fmt.Fprintf(o, "type %s int32\n", e.GoName())
+	fmt.Fprintf(o, "const (\n")
 	for _, m := range e.Members {
-		fmt.Printf("\t%s %s = %v\n", m.GoName(), e.GoName(), m.Value)
+		fmt.Fprintf(o, "\t%s %s = %v\n", m.GoName(), e.GoName(), m.Value)
 	}
-	fmt.Printf(")\n")
+	fmt.Fprintf(o, ")\n")
 }
 
 func identifierOf(dd *cc.DirectDeclarator) string {

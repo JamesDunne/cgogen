@@ -2,23 +2,34 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/cznic/cc"
 )
 
-func main() {
+func generateCgo(srcPaths []string, packageName string, outPath string) error {
 	// Use 64-bit C types model:
-	model := models[Arch64]
+	model := &cc.Model{
+		Items: make(map[cc.Kind]cc.ModelItem),
+	}
+	for k, v := range models[Arch64].Items {
+		model.Items[k] = v
+	}
 
 	// Parse openvg.h main header:
-	tu, err := cc.Parse("", []string{"VG/openvg.h"}, model,
+	tu, err := cc.Parse("", srcPaths, model,
 		cc.SysIncludePaths([]string{"."}),
 		cc.AllowCompatibleTypedefRedefinitions(),
 	)
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
+
+	o, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer o.Close()
 
 	functions := make([]Function, 0, 50)
 	enums := make([]Enum, 0, 50)
@@ -52,21 +63,38 @@ func main() {
 		u = u.TranslationUnit
 	}
 
-	fmt.Println(`package vg
+	fmt.Fprintf(o, `package %s
 
 //#cgo LDFLAGS: -lAmanithVG
-//#include "VG/openvg.h"
-import "C"
+`, packageName)
+	for _, s := range srcPaths {
+		fmt.Fprintf(o, "//#include \"%s\"\n", s)
+	}
+	fmt.Fprintln(o, `import "C"
 
 import "unsafe"`)
 
 	for _, e := range enums {
-		fmt.Println()
-		emitEnum(e)
+		fmt.Fprintln(o)
+		emitEnum(e, o)
 	}
 
 	for _, f := range functions {
-		fmt.Println()
-		emitFunction(f)
+		fmt.Fprintln(o)
+		emitFunction(f, o)
 	}
+
+	return nil
+}
+
+func main() {
+	var err error
+	err = generateCgo([]string{"VG/openvg.h"}, "vg", "../golang-openvg/vg/vg.go")
+	if err != nil {
+		panic(err)
+	}
+	//	err = generateCgo([]string{"VG/vgu.h"}, "vgu", "../golang-openvg/vgu/vgu.go")
+	//	if err != nil {
+	//		panic(err)
+	//	}
 }
